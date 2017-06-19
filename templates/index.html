@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>ToDo API Client Demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="http://netdna.bootstrapcdn.com/twitter-bootstrap/2.3.2/css/bootstrap-combined.min.css" rel="stylesheet">
+<script src="http://ajax.aspnetcdn.com/ajax/jquery/jquery-1.9.0.js"></script>
+<script src="http://netdna.bootstrapcdn.com/twitter-bootstrap/2.3.2/js/bootstrap.min.js"></script>
+<script src="http://ajax.aspnetcdn.com/ajax/knockout/knockout-2.2.1.js"></script>
+</head>
+<body>
+    <div class="navbar">
+        <div class="navbar-inner">
+            <a class="brand" href="#">מי בא היום לגן</a>
+        </div>
+    </div>
+    <div id="main" class="container">
+        <table class="table table-striped">
+            <tr> <td style="width: 1px;"></td> <td><b>שם</b></td> <td></td><td></td><td style="width: 120px;"></td></tr>
+
+            <!-- ko foreach: children -->
+            <tr>
+                <td>
+                    <span data-bind="visible: arrived" class="label label-success">פה</span>
+                    <span data-bind="visible: !arrived()" class="label label-important">לא פה</span>
+                </td>
+                <td><b data-bind="text: name"></b></td>
+                <td><img src="https://s-media-cache-ak0.pinimg.com/originals/b3/ac/66/b3ac66a299b5496846ffa50eac790d49.png" width=100px></td>
+                <td>
+                    <span data-bind="visible: !arrived()">
+                        <button  data-bind="click: $parent.set_arrived"class="btn">הגיע/ה</button>
+                    </span>
+                </td>
+                <td>
+                    <button  data-bind="click: $parent.beginEdit"class="btn">ערוך</button>
+                    <button  data-bind="click: $parent.remove"class="btn">הסר</button>
+                </td>
+            </tr>
+            <!-- /ko -->
+        </table>
+        <button data-bind="click: beginAdd" class="btn">הוסף ילד</button>
+    </div>
+    <div id="add" class="modal hide fade" tabindex="=1" role="dialog" aria-labelledby="addDialogLabel" aria-hidden="false">
+        <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+            <h3 id="addDialogLabel">Add Child</h3>
+        </div>
+        <div class="modal-body">
+            <form class="form-horizontal">
+                <div class="control-group">
+                    <label class="control-label" for="inputChild">Name</label>
+                    <div class="controls">
+                        <input data-bind="value: name" type="text" id="inputName" placeholder="Child name" style="width: 150px;">
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label class="control-label" for="inputDescription">Mails</label>
+                    <div class="controls">
+                        <input data-bind="value: mails" type="text" id="inputMails" placeholder="[mail1, mail2, ... ]" style="width: 300px;">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button data-bind="click: addChild" class="btn btn-primary">Add Child</button>
+            <button class="btn" data-dismiss="modal" aria-hidden="true">Cancel</button>
+        </div>
+    </div>
+    <div id="edit" class="modal hide fade" tabindex="=1" role="dialog" aria-labelledby="editDialogLabel" aria-hidden="false">
+        <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+            <h3 id="addDialogLabel">Edit Child</h3>
+        </div>
+        <div class="modal-body">
+            <form class="form-horizontal">
+                <div class="control-group">
+                    <label class="control-label" for="inputChild">Name</label>
+                    <div class="controls">
+                        <input data-bind="value: name" type="text" id="inputName" placeholder="Child name" style="width: 150px;">
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label class="control-label" for="inputDescription">Mails</label>
+                    <div class="controls">
+                        <input data-bind="value: mails" type="text" id="inputMails" placeholder="[mail1, mail2, ... ]" style="width: 300px;">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button data-bind="click: editChild" class="btn btn-primary">Done</button>
+            <button class="btn" data-dismiss="modal" aria-hidden="true">Cancel</button>
+        </div>
+    </div>
+    <script type="text/javascript">
+        function ChildrenViewModel() {
+            var self = this;
+            self.childrenURI = '{{ api_ip }}/balagan/api/v1.0/children';
+
+            self.children = ko.observableArray();
+
+            self.ajax = function(uri, method, data) {
+                var request = {
+                    url: uri,
+                    type: method,
+                    contentType: "application/json",
+                    accepts: "application/json",
+                    cache: false,
+                    dataType: 'json',
+                    data: JSON.stringify(data),
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization",
+                            "Basic " + btoa(self.username + ":" + self.password));
+                    },
+                    error: function(jqXHR) {
+                        console.log("ajax error " + jqXHR.status);
+                    }
+                };
+                return $.ajax(request);
+            }
+
+            self.beginAdd = function() {
+                $('#add').modal('show');
+            }
+            self.beginEdit = function(child) {
+                editChildViewModel.setChild(child);
+            }
+            self.remove = function(child) {
+                self.ajax(self.childrenURI + '/' + child.name(), 'DELETE').done(function() {
+                    self.children.remove(child);
+                });
+            }
+            self.set_arrived = function(child) {
+                self.ajax(self.childrenURI + '/' + child.name(), 'PUT', { arrived: true }).done(function(res) {
+                    self.updateChild(child.name(), res.child);
+                });
+            }
+
+            self.ajax(self.childrenURI, 'GET').done(function(data) {
+                for (var name in data.children) {
+                    self.children.push({
+                        name: ko.observable(name),
+                        mails: ko.observable(data.children[name].mails),
+                        arrived: ko.observable(data.children[name].arrived)
+                    });
+                }
+            });
+            self.add = function(child)
+            {
+                self.ajax(self.childrenURI, 'POST', child).done(function(data) {
+                    self.children.push({
+                        name: ko.observable(child.name),
+                        mails: ko.observable(data.child.mails),
+                        arrived: ko.observable(data.child.arrived)
+                    });
+                });
+            }
+            self.edit = function(name, data) {
+                self.ajax(self.childrenURI + '/' + name, 'PUT', data).done(function(res) {
+                    res.child.name = data.name
+                    self.updateChild(name, res.child);
+                });
+            }
+            self.updateChild = function(name, newChild) {
+                var i = 0
+                while (self.children()[i].name() != name) {
+                    i++;
+                }
+                self.children()[i].name(newChild.name);
+                self.children()[i].mails(newChild.mails);
+                self.children()[i].arrived(newChild.arrived);
+            }
+        }
+        function AddChildViewModel() {
+            var self = this;
+            self.name = ko.observable();
+            self.mails = ko.observable();
+            self.arrived = false;
+
+            self.addChild = function() {
+                $('#add').modal('hide');
+                childrenViewModel.add({
+                    name: self.name(),
+                    mails: [self.mails(),],
+                    arrived: self.arrived
+                });
+                self.name("");
+                self.mails("");
+            }
+        }
+        function EditChildViewModel() {
+            var self = this;
+            self.name = ko.observable();
+            self.mails = ko.observable();
+            self.arrived = false;
+
+            self.setChild = function(child) {
+                self.org_name = child.name();
+                self.name(child.name());
+                self.mails(child.mails());
+                self.arrived = child.arrived()
+                $('#edit').modal('show');
+            }
+            self.editChild = function() {
+                $('#edit').modal('hide');
+                childrenViewModel.edit(self.org_name, {
+                    name: self.name(),
+                    mails: self.mails(),
+                    arrived: self.arrived
+                });
+            }
+        }
+        var childrenViewModel = new ChildrenViewModel();
+        var addChildViewModel = new AddChildViewModel();
+        var editChildViewModel = new EditChildViewModel();
+        ko.applyBindings(childrenViewModel, $('#main')[0]);
+        ko.applyBindings(addChildViewModel, $('#add')[0]);
+        ko.applyBindings(editChildViewModel, $('#edit')[0]);
+
+    </script>
+</body>
+</html>
