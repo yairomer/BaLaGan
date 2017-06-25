@@ -10,21 +10,26 @@ from flask import Flask, jsonify, request, abort, make_response, render_template
 
 app = Flask(__name__)
 
-CHILDREN = {
-    u'עלמה': {'arrived': False, 'mails': [u'user@gmail.com']},
-    u'אלמה': {'arrived': False, 'mails': []},
-    u'עלמהה': {'arrived': False, 'mails': []},
-    u'עלמה בת': {'arrived': False, 'mails': []},
-    u'עלמה בן': {'arrived': False, 'mails': []},
-    u'עלמה טרנס': {'arrived': False, 'mails': []},
-}
 
-config_file = os.path.join(os.path.dirname(inspect.getfile(inspect.currentframe())), 'balagan_config.yaml')
-CONFIG = yaml.load(open(config_file, 'r').read())
+DEFAULT_IMAGE_URL = u'https://s-media-cache-ak0.pinimg.com/originals/b3/ac/66/b3ac66a299b5496846ffa50eac790d49.png'
+
+CONFIG_FILE = os.path.join(os.path.dirname(inspect.getfile(inspect.currentframe())), 'balagan_config.yaml')
+CONFIG_DEFAULT_FILE = os.path.join(os.path.dirname(inspect.getfile(inspect.currentframe())), 'defaults/balagan_config.yaml')
+if os.path.isfile(CONFIG_FILE):
+    CONFIG = yaml.load(open(CONFIG_FILE, 'r').read())
+else:
+    CONFIG = yaml.load(open(CONFIG_DEFAULT_FILE, 'r').read())
+
+CHILDREN_FILE = os.path.join(os.path.dirname(inspect.getfile(inspect.currentframe())), 'children.yaml')
+CHILDREN_DEFAULT_FILE = os.path.join(os.path.dirname(inspect.getfile(inspect.currentframe())), 'defaults/children.yaml')
+if os.path.isfile(CHILDREN_FILE):
+    CHILDREN = yaml.load(open(CHILDREN_FILE, 'r').read()) or {}
+else:
+    CHILDREN = yaml.load(open(CHILDREN_DEFAULT_FILE, 'r').read()) or {}
 
 
 def check_child(child):
-    if not set(child.keys()) <= {'mails', 'arrived'}:
+    if not set(child.keys()) <= {'mails', 'image_url', 'arrived'}:
         return 'child keys must by in \{"mail", "arrived"\}: {}'.format(child.keys())
 
     if 'mails' not in child.keys():
@@ -36,6 +41,12 @@ def check_child(child):
     for mail in child['mails']:
         if type(mail) is not unicode:
             return '"mail" type must be unicode: {}'.format(type(mail))
+
+    if 'image_url' not in child.keys():
+        return 'child missing "image_url" field'
+
+    if type(child['image_url']) is not unicode:
+        return '"image_url" type must be unicode: {}'.format(type(child['image_url']))
 
     if 'arrived' not in child.keys():
         return 'child missing "arrived" field'
@@ -60,12 +71,12 @@ def get_child(name):
 
 @app.route('/balagan/api/v1.0/children', methods=['POST'])
 def add_child():
-    print(request.json)
     if (not request.json) or ('name' not in request.json):
         abort(400)
 
     name = request.json['name']
     child = {'mails': request.json.get('mails', []),
+             'image_url': request.json.get('arrived', DEFAULT_IMAGE_URL),
              'arrived': request.json.get('arrived', False),
              }
     res = check_child(child)
@@ -74,6 +85,7 @@ def add_child():
         abort(400)
 
     CHILDREN[name] = child
+    open(CHILDREN_FILE, 'w').write(yaml.dump(CHILDREN))
     return jsonify({'child': child})
 
 
@@ -101,6 +113,7 @@ def update_child(name):
     CHILDREN[updated_name] = child
     if name != updated_name:
         CHILDREN.pop(name)
+    open(CHILDREN_FILE, 'w').write(yaml.dump(CHILDREN))
     return jsonify({'child': child})
 
 
@@ -109,13 +122,41 @@ def remove_child(name):
     if name not in CHILDREN.keys():
         abort(404)
     CHILDREN.pop(name)
+    open(CHILDREN_FILE, 'w').write(yaml.dump(CHILDREN))
     return jsonify({'result': True})
+
+
+@app.route('/balagan/api/v1.0/children/actions', methods=['POST'])
+def actions():
+    if (not request.json) or ('type' not in request.json):
+        abort(400)
+
+    global CHILDREN
+
+    if request.json['type'] == 'reset_arrived':
+        for child in CHILDREN.itervalues():
+            child['arrived'] = False
+
+    elif request.json['type'] == 'reset':
+        CHILDREN = yaml.load(open(CHILDREN_DEFAULT_FILE, 'r').read()) or {}
+        open(CHILDREN_FILE, 'w').write(yaml.dump(CHILDREN))
+
+    else:
+        abort(400)
+
+    return jsonify({})
 
 
 @app.route('/')
 @app.route('/index')
 def index():
-    return render_template('index.html', api_ip='http://{}:{}'.format(CONFIG['host'], CONFIG['port']))
+    return render_template('index.html')
+
+
+@app.route('/manage/')
+@app.route('/manage/index')
+def manage():
+    return render_template('manage.html')
 
 
 if __name__ == '__main__':
